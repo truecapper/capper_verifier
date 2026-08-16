@@ -2,10 +2,9 @@ import io
 import os
 from PIL import Image, ImageDraw, ImageFont
 from pilmoji import Pilmoji
-from pilmoji.source import TwitterEmojiSource
 
 def get_base_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
-    """Загружает TTF шрифт для базового текста."""
+    """Загружает базовый шрифт для букв и цифр."""
     candidates = [
         "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -18,6 +17,16 @@ def get_base_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
             except Exception:
                 pass
     return ImageFont.load_default()
+
+def get_emoji_font(size: int):
+    """Явно загружает файл NotoColorEmoji.ttf из корня проекта."""
+    emoji_path = "NotoColorEmoji.ttf"
+    if os.path.exists(emoji_path):
+        try:
+            return ImageFont.truetype(emoji_path, size)
+        except Exception:
+            pass
+    return None
 
 def create_capper_card(
     capper_name: str,
@@ -37,8 +46,9 @@ def create_capper_card(
     font_card_val = get_base_font(36, bold=True)
     font_card_lbl = get_base_font(20, bold=False)
     font_badge = get_base_font(22, bold=True)
+    emoji_font_title = get_emoji_font(44)
 
-    # Определение буквы для аватара
+    # Буква для аватара
     avatar_letter = "C"
     if username:
         avatar_letter = username[0].upper()
@@ -48,7 +58,7 @@ def create_capper_card(
                 avatar_letter = ch.upper()
                 break
 
-    # 2. Шапка профиля (фон)
+    # 2. Шапка профиля
     draw.rounded_rectangle([(60, 60), (1020, 200)], radius=24, fill="#1E293B", outline="#334155", width=2)
     
     # Аватар
@@ -96,16 +106,20 @@ def create_capper_card(
     # 5. Подвал
     draw.rounded_rectangle([(60, 910), (1020, 1020)], radius=20, fill="#0B132B", outline="#1E293B", width=1)
 
-    # 6. Отрисовка текста со смайлами через Pilmoji (TwitterEmojiSource)
-    with Pilmoji(image, source=TwitterEmojiSource) as pilmoji:
-        # Имя каппера (включая эмодзи 🕸️ и любые другие)
-        pilmoji.text((200, 95), capper_name, fill="#FFFFFF", font=font_title)
+    # 6. Отрисовка текста
+    with Pilmoji(image) as pilmoji:
+        # Имя каппера с явным emoji_font
+        pilmoji.text(
+            (200, 95), 
+            capper_name, 
+            fill="#FFFFFF", 
+            font=font_title,
+            emoji_font=emoji_font_title
+        )
         
-        # Юзернейм и статус
         user_handle = f"@{username} • " if username else ""
         pilmoji.text((200, 150), f"{user_handle}Verified Live Capper", fill="#38BDF8", font=font_subtitle)
 
-        # Футер
         pilmoji.text((90, 940), "🔒 TRUECAPPER PROTOCOL VERIFIED", fill="#10B981", font=font_badge)
         pilmoji.text((90, 975), "Неизменяемый реестр live-прогнозов • t.me/capper_verifier_bot", fill="#64748B", font=font_subtitle)
 

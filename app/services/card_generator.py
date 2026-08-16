@@ -1,32 +1,14 @@
 import io
-import os
+import re
 from PIL import Image, ImageDraw, ImageFont
-from pilmoji import Pilmoji
 
-def get_base_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
-    """Загружает базовый шрифт для букв и цифр."""
-    candidates = [
-        "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if bold else "/usr/share/fonts/truetype/freefont/FreeSans.ttf"
-    ]
-    for path in candidates:
-        if os.path.exists(path):
-            try:
-                return ImageFont.truetype(path, size)
-            except Exception:
-                pass
-    return ImageFont.load_default()
-
-def get_emoji_font(size: int):
-    """Явно загружает файл NotoColorEmoji.ttf из корня проекта."""
-    emoji_path = "NotoColorEmoji.ttf"
-    if os.path.exists(emoji_path):
-        try:
-            return ImageFont.truetype(emoji_path, size)
-        except Exception:
-            pass
-    return None
+def clean_display_text(text: str) -> str:
+    """Удаляет непечатаемые для PIL символы, оставляя читаемый текст."""
+    if not text:
+        return ""
+    # Оставляем буквы, цифры, пробелы и базовую пунктуацию
+    cleaned = re.sub(r'[^\w\s\-_.,!?@#*()+=/\\]', '', text, flags=re.UNICODE).strip()
+    return cleaned
 
 def create_capper_card(
     capper_name: str,
@@ -41,31 +23,49 @@ def create_capper_card(
     draw = ImageDraw.Draw(image)
 
     # 1. Шрифты
-    font_title = get_base_font(44, bold=True)
-    font_subtitle = get_base_font(24, bold=False)
-    font_card_val = get_base_font(36, bold=True)
-    font_card_lbl = get_base_font(20, bold=False)
-    font_badge = get_base_font(22, bold=True)
-    emoji_font_title = get_emoji_font(44)
+    try:
+        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 46)
+        font_subtitle = ImageFont.truetype("DejaVuSans.ttf", 24)
+        font_card_val = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
+        font_card_lbl = ImageFont.truetype("DejaVuSans.ttf", 20)
+        font_badge = ImageFont.truetype("DejaVuSans-Bold.ttf", 22)
+    except Exception:
+        font_title = ImageFont.load_default()
+        font_subtitle = ImageFont.load_default()
+        font_card_val = ImageFont.load_default()
+        font_card_lbl = ImageFont.load_default()
+        font_badge = ImageFont.load_default()
 
-    # Буква для аватара
+    # 2. Определяем имя для показа (без квадратов)
+    clean_name = clean_display_text(capper_name)
+    if clean_name:
+        display_title = clean_name
+    elif username:
+        display_title = f"@{username}"
+    else:
+        display_title = "Verified Capper"
+
+    # Буква аватара
     avatar_letter = "C"
-    if username:
-        avatar_letter = username[0].upper()
-    elif capper_name:
-        for ch in capper_name:
-            if ch.isalnum():
-                avatar_letter = ch.upper()
-                break
+    for ch in display_title:
+        if ch.isalnum():
+            avatar_letter = ch.upper()
+            break
 
-    # 2. Шапка профиля
+    # 3. Шапка
     draw.rounded_rectangle([(60, 60), (1020, 200)], radius=24, fill="#1E293B", outline="#334155", width=2)
     
     # Аватар
     draw.rounded_rectangle([(90, 85), (175, 175)], radius=20, fill="#2563EB")
     draw.text((118, 102), avatar_letter, fill="#FFFFFF", font=font_title)
+    
+    # Имя каппера
+    draw.text((200, 95), display_title, fill="#FFFFFF", font=font_title)
+    
+    user_handle = f"@{username} • " if username else ""
+    draw.text((200, 150), f"{user_handle}Verified Live Capper", fill="#38BDF8", font=font_subtitle)
 
-    # 3. Центральный блок: ALL-TIME
+    # 4. Блок ALL-TIME
     draw.rounded_rectangle([(60, 230), (1020, 420)], radius=24, fill="#131D31", outline="#3B82F6", width=2)
     draw.text((90, 255), "ОБЩАЯ СТАТИСТИКА (ALL-TIME)", fill="#60A5FA", font=font_badge)
     
@@ -80,7 +80,7 @@ def create_capper_card(
     draw.text((780, 310), f"{all_stats['profit']:+,.0f}", fill=profit_color, font=font_title)
     draw.text((780, 370), "Профит (коины)", fill="#94A3B8", font=font_card_lbl)
 
-    # 4. Периоды: Сегодня, 7 Дней, 30 Дней
+    # 5. Периоды
     periods = [
         ("СЕГОДНЯ", day_stats, 60),
         ("7 ДНЕЙ", week_stats, 390),
@@ -101,27 +101,13 @@ def create_capper_card(
 
         draw.text((x_pos + 30, 740), "Ставки (В/П):", fill="#94A3B8", font=font_card_lbl)
         draw.text((x_pos + 30, 770), f"{stats['wins']} / {stats['losses']}", fill="#FFFFFF", font=font_card_val)
+        
         draw.text((x_pos + 30, 825), f"Винрейт: {stats['winrate']}%", fill="#94A3B8", font=font_card_lbl)
 
-    # 5. Подвал
+    # 6. Подвал
     draw.rounded_rectangle([(60, 910), (1020, 1020)], radius=20, fill="#0B132B", outline="#1E293B", width=1)
-
-    # 6. Отрисовка текста
-    with Pilmoji(image) as pilmoji:
-        # Имя каппера с явным emoji_font
-        pilmoji.text(
-            (200, 95), 
-            capper_name, 
-            fill="#FFFFFF", 
-            font=font_title,
-            emoji_font=emoji_font_title
-        )
-        
-        user_handle = f"@{username} • " if username else ""
-        pilmoji.text((200, 150), f"{user_handle}Verified Live Capper", fill="#38BDF8", font=font_subtitle)
-
-        pilmoji.text((90, 940), "🔒 TRUECAPPER PROTOCOL VERIFIED", fill="#10B981", font=font_badge)
-        pilmoji.text((90, 975), "Неизменяемый реестр live-прогнозов • t.me/capper_verifier_bot", fill="#64748B", font=font_subtitle)
+    draw.text((90, 940), "TRUECAPPER PROTOCOL VERIFIED", fill="#10B981", font=font_badge)
+    draw.text((90, 975), "Неизменяемый реестр live-прогнозов • t.me/capper_verifier_bot", fill="#64748B", font=font_subtitle)
 
     output_buffer = io.BytesIO()
     image.save(output_buffer, format="PNG", optimize=True)

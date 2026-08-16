@@ -1,6 +1,35 @@
 import io
-import re
+import os
+import urllib.request
 from PIL import Image, ImageDraw, ImageFont
+
+FONT_PATH = "DejaVuSans-Bold.ttf"
+
+def get_loaded_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
+    """Загружает TTF шрифт с полной поддержкой кириллицы и спецсимволов."""
+    try:
+        if os.path.exists(FONT_PATH):
+            return ImageFont.truetype(FONT_PATH, size)
+        # Системные шрифты Linux/Debian на Render
+        for sys_font in [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if bold else "/usr/share/fonts/truetype/freefont/FreeSans.ttf"
+        ]:
+            if os.path.exists(sys_font):
+                return ImageFont.truetype(sys_font, size)
+    except Exception:
+        pass
+    return ImageFont.load_default()
+
+def format_clean_chat_name(full_name: str) -> str:
+    """
+    Формирует оригинальное экранное имя каппера из чата.
+    Фильтрует непечатаемые управляющие байты, сохраняя буквы, знаки и читаемый текст.
+    """
+    # Сохраняем все кириллические, латинские буквы, цифры и знаки препинания
+    clean = "".join(c for c in full_name if ord(c) < 0x10000 and (c.isalnum() or c in " _-—–.,!?'\"()[]{}#@*~/\\+")).strip()
+    return clean if clean else full_name.strip()
 
 def create_capper_card(
     capper_name: str,
@@ -14,40 +43,38 @@ def create_capper_card(
     image = Image.new("RGB", (width, height), color="#0F172A")
     draw = ImageDraw.Draw(image)
 
-    # 1. Настройка шрифтов
-    try:
-        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 44)
-        font_subtitle = ImageFont.truetype("DejaVuSans.ttf", 26)
-        font_card_val = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
-        font_card_lbl = ImageFont.truetype("DejaVuSans.ttf", 20)
-        font_badge = ImageFont.truetype("DejaVuSans-Bold.ttf", 22)
-    except Exception:
-        font_title = ImageFont.load_default()
-        font_subtitle = ImageFont.load_default()
-        font_card_val = ImageFont.load_default()
-        font_card_lbl = ImageFont.load_default()
-        font_badge = ImageFont.load_default()
+    # 1. Шрифты
+    font_title = get_loaded_font(46, bold=True)
+    font_subtitle = get_loaded_font(24, bold=False)
+    font_card_val = get_loaded_font(36, bold=True)
+    font_card_lbl = get_loaded_font(20, bold=False)
+    font_badge = get_loaded_font(22, bold=True)
 
-    # 2. Определяем чистый ник и букву аватара
-    if username:
-        display_handle = f"@{username}"
-        # Первая буква ника
-        avatar_letter = username[0].upper()
-    else:
-        clean_name = re.sub(r'[^\w\s\-_.,!а-яА-ЯёЁa-zA-Z0-9]', '', capper_name).strip()
-        display_handle = clean_name if clean_name else "Verified Capper"
-        avatar_letter = display_handle[0].upper() if display_handle else "C"
+    # 2. Имя каппера из чата
+    display_chat_name = format_clean_chat_name(capper_name)
+    if not display_chat_name:
+        display_chat_name = username or "Каппер"
+
+    # Буква для плашки аватара
+    first_char = "C"
+    for ch in display_chat_name:
+        if ch.isalnum():
+            first_char = ch.upper()
+            break
 
     # 3. Шапка профиля
     draw.rounded_rectangle([(60, 60), (1020, 200)], radius=24, fill="#1E293B", outline="#334155", width=2)
     
-    # Аватар с первой буквой ника
+    # Аватар-бейдж
     draw.rounded_rectangle([(90, 85), (175, 175)], radius=20, fill="#2563EB")
-    draw.text((118, 102), avatar_letter, fill="#FFFFFF", font=font_title)
+    draw.text((118, 102), first_char, fill="#FFFFFF", font=font_title)
     
-    # Крупный жирный никнейм и плашка
-    draw.text((200, 95), display_handle, fill="#FFFFFF", font=font_title)
-    draw.text((200, 150), "Official TrueCapper Verified Profile", fill="#38BDF8", font=font_subtitle)
+    # Отображаемое имя каппера (как в чате)
+    draw.text((200, 95), display_chat_name, fill="#FFFFFF", font=font_title)
+    
+    # Дополнительная плашка (юзернейм и статус)
+    user_handle = f"@{username} • " if username else ""
+    draw.text((200, 150), f"{user_handle}Verified Live Capper", fill="#38BDF8", font=font_subtitle)
 
     # 4. Центральный блок: ALL-TIME
     draw.rounded_rectangle([(60, 230), (1020, 420)], radius=24, fill="#131D31", outline="#3B82F6", width=2)
